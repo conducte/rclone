@@ -16,6 +16,7 @@ import (
 
 const (
 	maxUploadDelay = 5 * time.Minute // max delay between upload attempts
+	maxUploadAttempts = 3
 )
 
 // PutFn is the interface that item provides to store the data
@@ -341,7 +342,7 @@ func (wb *WriteBack) upload(ctx context.Context, wbItem *writeBackItem) {
 	wbItem.uploading = false
 	wb.uploads--
 
-	if err != nil {
+	if err != nil && wbItem.tries < maxUploadAttempts {
 		// FIXME should this have a max number of transfer attempts?
 		wbItem.delay *= 2
 		if wbItem.delay > maxUploadDelay {
@@ -358,7 +359,11 @@ func (wb *WriteBack) upload(ctx context.Context, wbItem *writeBackItem) {
 		wb._pushItem(wbItem)
 		wb.items._update(wbItem, time.Now().Add(wbItem.delay))
 	} else {
-		fs.Infof(wbItem.name, "vfs cache: upload succeeded try #%d", wbItem.tries)
+		if err == nil {
+			fs.Infof(wbItem.name, "vfs cache: upload succeeded try #%d", wbItem.tries)
+		} else {
+			fs.Infof(wbItem.name, "vfs cache: upload failed try #%d with error %v", wbItem.tries, err)
+		}
 		// show that we are done with the item
 		wb._delItem(wbItem)
 	}
